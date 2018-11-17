@@ -158,3 +158,16 @@ func (self *OrderedSet) lowerAndUpperFromScores(lowerScore, upperScore int) (int
 
 	return lower, upper, true
 }
+
+func (self *OrderedSet) Score(value string) interface{} {
+	if _, ok := self.index[value]; !ok {
+		return nil
+	}
+
+	for _, e := range self.elements {
+		if string(e.value) == string(value) {
+			return e.score
+		}
+	}
+	return nil
+}

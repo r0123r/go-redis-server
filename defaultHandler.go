@@ -12,6 +12,7 @@ type (
 	HashHash       map[string]HashValue
 	HashSub        map[string][]*ChannelWriter
 	HashBrStack    map[string]*Stack
+	HashTtl        map[string]time.Time
 	HashOrderedSet map[string]*OrderedSet
 )
 
@@ -22,8 +23,8 @@ type Database struct {
 	values  HashValue
 	hvalues HashHash
 	brstack HashBrStack
-
-	sub HashSub
+	ttl     HashTtl
+	sub     HashSub
 
 	orderedSet HashOrderedSet
 }
@@ -31,13 +32,31 @@ type Database struct {
 func NewDatabase(parent *Database) *Database {
 	db := &Database{
 		values:     make(HashValue),
+		hvalues:    make(HashHash),
 		sub:        make(HashSub),
 		brstack:    make(HashBrStack),
+		ttl:        make(HashTtl),
 		children:   map[int]*Database{},
 		parent:     parent,
 		orderedSet: make(HashOrderedSet),
 	}
 	db.children[0] = db
+	go func(db *Database) {
+		for {
+			now := time.Now()
+			for key, val := range db.ttl {
+				if now.Sub(val).Seconds() >= 0 {
+					delete(db.values, key)
+					delete(db.hvalues, key)
+					delete(db.brstack, key)
+					delete(db.orderedSet, key)
+					delete(db.ttl, key)
+				}
+			}
+			time.Sleep(time.Second)
+		}
+	}(db)
+
 	return db
 }
 
@@ -348,6 +367,8 @@ func (h *DefaultHandler) Publish(key string, value []byte) (int, error) {
 	i := 0
 	for _, c := range v {
 		select {
+		case <-c.clientChan:
+			delete(h.sub, key)
 		case c.Channel <- []interface{}{
 			"message",
 			key,
@@ -416,31 +437,41 @@ func (h *DefaultHandler) Decr(key string) (int, error) {
 	return temp, nil
 }
 
-func (h *DefaultHandler) Expire(key, after string) (int, error) {
+func (h *DefaultHandler) Expire(key, value string) (int, error) {
 	if h.Database == nil {
 		h.Database = NewDatabase(nil)
 	}
 
-	d, _ := strconv.Atoi(after)
-
-	time.AfterFunc(time.Duration(d)*time.Second, func() {
-		h.Del(key)
-	})
+	i, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, err
+	}
+	h.ttl[key] = time.Now().Add(time.Second * time.Duration(i))
 
 	return 1, nil
 }
 
-func (h *DefaultHandler) Exists(key string) (int, error) {
+func (h *DefaultHandler) Exists(keys ...string) (int, error) {
 	if h.Database == nil {
 		h.Database = NewDatabase(nil)
 	}
 
-	_, exists := h.values[key]
-	if exists {
-		return 1, nil
-	} else {
-		return 0, nil
+	c := int(0)
+	for _, key := range keys {
+		if _, exists := h.values[key]; exists {
+			c++
+		}
+		if _, exists := h.hvalues[key]; exists {
+			c++
+		}
+		if _, exists := h.brstack[key]; exists {
+			c++
+		}
+		if _, exists := h.orderedSet[key]; exists {
+			c++
+		}
 	}
+	return c, nil
 }
 
 func (h *DefaultHandler) Zadd(key string, score int, value []byte, values ...[]byte) (int, error) {

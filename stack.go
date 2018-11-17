@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"bytes"
 	"sync"
 )
 
@@ -107,4 +108,50 @@ func NewStack(key string) *Stack {
 		Chan:  make(chan *Stack),
 		Key:   key,
 	}
+}
+func (s *Stack) SetIndex(index int, val []byte) {
+	s.Lock()
+	defer s.Unlock()
+
+	if index < 0 {
+		if len(s.stack)+index >= 0 {
+			s.stack[len(s.stack)+index] = val
+		}
+	} else if len(s.stack) > index {
+		s.stack[index] = val
+	}
+
+}
+func (s *Stack) DelIndex(index int) {
+	s.Lock()
+	defer s.Unlock()
+
+	if index < 0 {
+		i := len(s.stack) + index
+		if i >= 0 {
+			s.stack = append(s.stack[:i], s.stack[i+1:]...)
+		}
+	} else if len(s.stack) > index {
+		s.stack = append(s.stack[:index], s.stack[index+1:]...)
+	}
+
+}
+
+//Filtering without allocating
+func (s *Stack) FilterRem(val []byte, count int) int {
+	s.Lock()
+	defer s.Unlock()
+	b := s.stack[:0]
+	c := 0
+	for _, x := range s.stack {
+		if bytes.Equal(x, val) {
+			c++
+		} else {
+			b = append(b, x)
+		}
+	}
+	if c > 0 {
+		s.stack = s.stack[:len(s.stack)-c]
+	}
+	return c
 }

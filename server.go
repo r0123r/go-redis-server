@@ -139,6 +139,7 @@ func (srv *Server) ServeClient(conn net.Conn) (err error) {
 			return err
 		}
 		if _, err = reply.WriteTo(conn); err != nil {
+			clientChan <- struct{}{}
 			return err
 		}
 	}

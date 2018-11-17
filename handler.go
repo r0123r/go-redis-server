@@ -37,6 +37,7 @@ func (srv *Server) Apply(r *Request) (ReplyWriter, error) {
 	}
 	fn, exists := srv.methods[strings.ToLower(r.Name)]
 	if !exists {
+		println(r.Name, " method not exists")
 		return ErrMethodNotSupported, nil
 	}
 	return fn(r)

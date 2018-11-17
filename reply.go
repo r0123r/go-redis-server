@@ -43,6 +43,14 @@ func writeBytes(value interface{}, w io.Writer) (int64, error) {
 		return int64(n), err
 	}
 	switch v := value.(type) {
+	case []interface{}:
+		if len(v) == 0 {
+			n, err := w.Write([]byte("*0\r\n"))
+			return int64(n), err
+		}
+		wrote, err := writeMultiBytes(v, w)
+		return int64(wrote), err
+
 	case string:
 		if len(v) == 0 {
 			n, err := w.Write([]byte("$-1\r\n"))
@@ -118,7 +126,14 @@ func MultiBulkFromMap(m map[string]interface{}) *MultiBulkReply {
 	i := 0
 	for key, val := range m {
 		values[i] = []byte(key)
-		values[i+1] = val
+		switch v := val.(type) {
+		case string:
+			values[i+1] = []byte(v)
+		default:
+			values[i+1] = val
+
+		}
+
 		i += 2
 	}
 	return &MultiBulkReply{values: values}
