@@ -1,6 +1,6 @@
-package main
+п»їpackage main
 
 func main() {
-	//Собственный Redis - server
+	//РЎРѕР±СЃС‚РІРµРЅРЅС‹Р№ Redis - server
 	redis_start()
 }
