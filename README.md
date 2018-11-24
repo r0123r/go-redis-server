@@ -7,6 +7,7 @@ go-redis-server is a helper library for building server software capable of spea
 an alternate implementation of redis, a custom proxy to redis, or even a completely different backend capable of
 "masquerading" its API as a redis database.
 
+Support standart redis-cli.
 
 Sample code
 ------------
@@ -72,10 +73,36 @@ func main() {
 Compatible Redis commands
 -------------------------
 - Pub/Sub
+  - Subscribe
+  - Publish
 - Connection
+  - Ping
+  - Select
 - Hashes
+  - HGet
+  - HGetAll
+  - HSet
+  - HMSet
+  - Hlen
 - Keys
+  - Del
+  - Keys
+  - Exists
+  - Expire
+  - Rename
+  - Ttl
+  - Type
+  - Scan
 - Lists
+  - Rpush
+  - Brpop
+  - Blpop
+  - Lrange
+  - Lindex
+  - Lpush
+  - Llen
+  - Lset
+  - Lrem
 - Server
   - Config get
   - DBsize
@@ -84,3 +111,18 @@ Compatible Redis commands
   - Info
   - Monitor
   - Time
+- Strings
+  - Get
+  - MGet
+  - Set
+  - MSet
+  - Decr
+  - Incr
+- Sorted Sets
+  - ZAdd
+  - Zrange
+  - Zrangebyscore
+  - Zrem
+  - Zremrangebyscore
+  - Zcard
+  - Zscore
