@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -69,7 +70,8 @@ func patternRE(k string) *regexp.Regexp {
 }
 
 func (h *DefaultHandler) MGet(keys ...string) ([][]byte, error) {
-	if h.Database == nil || h.values == nil {
+	h.Database = h.dbs[h.CurrentDb]
+	if h.values == nil {
 		return nil, nil
 	}
 	rez := make([][]byte, len(keys))
@@ -80,10 +82,7 @@ func (h *DefaultHandler) MGet(keys ...string) ([][]byte, error) {
 }
 
 func (h *DefaultHandler) MSet(args ...[]byte) error {
-	if h.Database == nil {
-		h.Database = NewDatabase(nil)
-	}
-
+	h.Database = h.dbs[h.CurrentDb]
 	if len(args)%2 != 0 {
 		return fmt.Errorf("not values")
 	}
@@ -97,9 +96,7 @@ func (h *DefaultHandler) MSet(args ...[]byte) error {
 	return nil
 }
 func (h *DefaultHandler) Keys(pattern string) ([][]byte, error) {
-	if h.Database == nil {
-		h.Database = NewDatabase(nil)
-	}
+	h.Database = h.dbs[h.CurrentDb]
 	res := make([][]byte, 0)
 	re := patternRE(pattern)
 	if re == nil {
@@ -135,21 +132,17 @@ func (h *DefaultHandler) Keys(pattern string) ([][]byte, error) {
 	return res, nil
 }
 func (h *DefaultHandler) FlushAll() error {
-	if h.Database == nil {
-		return nil
-	}
-	for _, db := range h.Database.children {
+	for _, db := range h.dbs {
 		db.values = make(HashValue)
 		db.hvalues = make(HashHash)
 		db.brstack = make(HashBrStack)
-
+		db.orderedSet = make(HashOrderedSet)
+		db.ttl = make(HashTtl)
 	}
 	return nil
 }
 func (h *DefaultHandler) FlushDB() error {
-	if h.Database == nil {
-		return nil
-	}
+	h.Database = h.dbs[h.CurrentDb]
 	h.values = make(HashValue)
 	h.hvalues = make(HashHash)
 	h.brstack = make(HashBrStack)
@@ -157,11 +150,7 @@ func (h *DefaultHandler) FlushDB() error {
 }
 
 func (h *DefaultHandler) Ttl(key string) (int, error) {
-
-	if h.Database == nil {
-		return 0, nil
-	}
-
+	h.Database = h.dbs[h.CurrentDb]
 	if ok, _ := h.Exists(key); ok != 1 {
 		// No such key
 		return -2, nil
@@ -188,18 +177,21 @@ func (h *DefaultHandler) Time() ([][]byte, error) {
 func (h *DefaultHandler) Info(key ...string) ([]byte, error) {
 	var b = bytes.NewBuffer(make([]byte, 0))
 	fmt.Fprint(b, "redis_version:gopex", "\r\n")
-	fmt.Fprint(b, "used_memory:", 1, "\r\n")
+	s := new(runtime.MemStats)
+	runtime.ReadMemStats(s)
+
+	fmt.Fprint(b, "used_memory:", s.Sys, "\r\n")
+	fmt.Fprint(b, "os:", runtime.GOOS, "\r\n")
 	return b.Bytes(), nil
 }
 func (h *DefaultHandler) DbSize() (int, error) {
-
-	if h.Database == nil {
-		return 0, nil
-	}
 	size := 0
-	size += len(h.values)
-	size += len(h.hvalues)
-	size += len(h.brstack)
+	for _, db := range h.dbs {
+		size += len(db.values)
+		size += len(db.hvalues)
+		size += len(db.brstack)
+		size += len(db.orderedSet)
+	}
 	return size, nil
 }
 func (h *DefaultHandler) Config(key, arg string) ([][]byte, error) {
@@ -213,6 +205,7 @@ func (h *DefaultHandler) Config(key, arg string) ([][]byte, error) {
 
 }
 func (h *DefaultHandler) Scan(args ...string) ([]interface{}, error) {
+	h.Database = h.dbs[h.CurrentDb]
 
 	if len(args) < 1 {
 		return nil, fmt.Errorf("args < 1")
@@ -223,10 +216,6 @@ func (h *DefaultHandler) Scan(args ...string) ([]interface{}, error) {
 	//	if err != nil {
 	//		return nil, fmt.Errorf("Invalid Cursor")
 	//	}
-	if h.Database == nil {
-		return nil, nil
-	}
-
 	args = args[1:]
 
 	// MATCH and COUNT options
@@ -291,10 +280,8 @@ func (h *DefaultHandler) Scan(args ...string) ([]interface{}, error) {
 	return ret, nil
 }
 func (h *DefaultHandler) Type(key string) (interface{}, error) {
+	h.Database = h.dbs[h.CurrentDb]
 
-	if h.Database == nil {
-		return nil, nil
-	}
 	if _, ok := h.values[key]; ok {
 		return "string", nil
 	}
@@ -312,27 +299,21 @@ func (h *DefaultHandler) Type(key string) (interface{}, error) {
 	return "none", nil
 }
 func (h *DefaultHandler) Hlen(key string) (interface{}, error) {
-	if h.Database == nil {
-		return nil, nil
-	}
+	h.Database = h.dbs[h.CurrentDb]
 	if v, ok := h.hvalues[key]; ok {
 		return len(v), nil
 	}
 	return 0, nil
 }
 func (h *DefaultHandler) Llen(key string) (interface{}, error) {
-	if h.Database == nil {
-		return nil, nil
-	}
+	h.Database = h.dbs[h.CurrentDb]
 	if v, ok := h.brstack[key]; ok {
 		return v.Len(), nil
 	}
 	return 0, nil
 }
 func (h *DefaultHandler) Lset(key string, ind int, value []byte) (interface{}, error) {
-	if h.Database == nil {
-		return nil, nil
-	}
+	h.Database = h.dbs[h.CurrentDb]
 	if v, ok := h.brstack[key]; ok {
 		v.SetIndex(ind, value)
 		return "OK", nil
@@ -340,9 +321,7 @@ func (h *DefaultHandler) Lset(key string, ind int, value []byte) (interface{}, e
 	return nil, nil
 }
 func (h *DefaultHandler) Lrem(key string, count int, value []byte) (interface{}, error) {
-	if h.Database == nil {
-		return nil, nil
-	}
+	h.Database = h.dbs[h.CurrentDb]
 	if v, ok := h.brstack[key]; ok {
 		rez := v.FilterRem(value, count)
 		return rez, nil
@@ -350,18 +329,14 @@ func (h *DefaultHandler) Lrem(key string, count int, value []byte) (interface{},
 	return nil, nil
 }
 func (h *DefaultHandler) Zcard(key string) (int, error) {
-	if h.Database == nil {
-		return 0, nil
-	}
+	h.Database = h.dbs[h.CurrentDb]
 	if v, ok := h.orderedSet[key]; ok {
 		return len(v.elements), nil
 	}
 	return 0, nil
 }
 func (h *DefaultHandler) Zscore(key, val string) (interface{}, error) {
-	if h.Database == nil {
-		return nil, nil
-	}
+	h.Database = h.dbs[h.CurrentDb]
 	if v, ok := h.orderedSet[key]; ok {
 		res := v.Score(val)
 		switch r := res.(type) {
@@ -372,4 +347,45 @@ func (h *DefaultHandler) Zscore(key, val string) (interface{}, error) {
 		}
 	}
 	return nil, nil
+}
+func (h *DefaultHandler) Rename(key, newKey string) (interface{}, error) {
+	h.Database = h.dbs[h.CurrentDb]
+	if val, exists := h.values[key]; exists {
+		h.values[newKey] = val
+		delete(h.values, key)
+		return "OK", nil
+	} else if val, exists := h.hvalues[key]; exists {
+		h.hvalues[newKey] = val
+		delete(h.hvalues, key)
+		return "OK", nil
+	} else if val, exists := h.brstack[key]; exists {
+		h.brstack[newKey] = val
+		delete(h.brstack, key)
+		return "OK", nil
+	} else if val, exists := h.orderedSet[key]; exists {
+		h.orderedSet[newKey] = val
+		delete(h.orderedSet, key)
+		return "OK", nil
+	}
+
+	return nil, fmt.Errorf("key not found")
+
+}
+func (h *DefaultHandler) HMSet(args ...[]byte) error {
+	h.Database = h.dbs[h.CurrentDb]
+	if len(args) > 2 && (len(args)-1)%2 != 0 {
+		return fmt.Errorf("not values")
+	}
+	key := string(args[0])
+	args = args[1:]
+	for len(args) > 0 {
+		subkey, value := args[0], args[1]
+		args = args[2:]
+		if _, err := h.Hset(key, string(subkey), value); err != nil {
+			return err
+		}
+
+	}
+
+	return nil
 }

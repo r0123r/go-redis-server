@@ -35,6 +35,7 @@ func (srv *Server) Apply(r *Request) (ReplyWriter, error) {
 		Debugf("The method map is uninitialized")
 		return ErrMethodNotSupported, nil
 	}
+	srv.methods["select"](&Request{Args: r.Numdb})
 	fn, exists := srv.methods[strings.ToLower(r.Name)]
 	if !exists {
 		println(r.Name, " method not exists")

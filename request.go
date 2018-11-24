@@ -7,6 +7,7 @@ import (
 type Request struct {
 	Name       string
 	Args       [][]byte
+	Numdb      [][]byte
 	Host       string
 	ClientChan chan struct{}
 }

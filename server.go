@@ -123,10 +123,14 @@ func (srv *Server) ServeClient(conn net.Conn) (err error) {
 	}
 
 	reader := bufio.NewReader(conn)
+	Numbd := [][]byte{[]byte("0")}
 	for {
 		request, err := parseRequest(reader)
 		if err != nil {
 			return err
+		}
+		if request.Name == "select" {
+			Numbd = request.Args
 		}
 		if request.Name == "quit" {
 			fmt.Fprintln(conn, "+OK")
@@ -134,6 +138,7 @@ func (srv *Server) ServeClient(conn net.Conn) (err error) {
 		}
 		request.Host = clientAddr
 		request.ClientChan = clientChan
+		request.Numdb = Numbd
 		reply, err := srv.Apply(request)
 		if err != nil {
 			return err
