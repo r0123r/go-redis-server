@@ -1,7 +1,6 @@
 package redis
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -56,26 +55,34 @@ func (srv *Server) handlerFn(autoHandler interface{}, f *reflect.Value, checkers
 			input = append(input, value)
 		}
 		var monitorString string
-		if len(request.Args) > 0 {
-			monitorString = fmt.Sprintf("%.6f [0 %s] \"%s\" \"%s\"",
+		if len(request.Host) > 0 {
+			monitorString = fmt.Sprintf("%.6f [%s %s] \"%s\" ",
 				float64(time.Now().UTC().UnixNano())/1e9,
+				string(request.Numdb[0]),
 				request.Host,
 				request.Name,
-				bytes.Join(request.Args, []byte{'"', ' ', '"'}))
-		} else {
-			monitorString = fmt.Sprintf("%.6f [0 %s] \"%s\"",
-				float64(time.Now().UTC().UnixNano())/1e9,
-				request.Host,
-				request.Name)
-		}
-		for _, c := range srv.MonitorChans {
-			select {
-			case c <- monitorString:
-			default:
-			}
-		}
-		Debugf("%s (connected monitors: %d)\n", monitorString, len(srv.MonitorChans))
+			)
 
+			if len(request.Args) > 0 {
+				for i, a := range request.Args {
+					monitorString += fmt.Sprint(" ", i, ":")
+					if len(a) > 50 {
+						monitorString += fmt.Sprint("size ", len(a))
+					} else {
+						monitorString += `"` + string(a) + `"`
+					}
+				}
+			}
+
+			for _, c := range srv.MonitorChans {
+				select {
+				case c <- monitorString:
+				default:
+				}
+			}
+
+			Debugf("%s (connected monitors: %d)\n", monitorString, len(srv.MonitorChans))
+		}
 		var result []reflect.Value
 
 		// If we don't have any input, it means we are dealing with a function.
@@ -148,7 +155,6 @@ func (srv *Server) createReply(r *Request, val interface{}) (ReplyWriter, error)
 	case *MonitorReply:
 		c := make(chan string)
 		srv.MonitorChans = append(srv.MonitorChans, c)
-		fmt.Println(Stderr, "len monitor: ", len(srv.MonitorChans))
 		v.c = c
 		return v, nil
 	case *ChannelWriter:

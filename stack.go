@@ -28,7 +28,11 @@ func (s *Stack) PopBack() []byte {
 	}
 	return ret
 }
-
+func (s *Stack) PushBackLite(vals ...[]byte) {
+	for _, val := range vals {
+		s.stack = append(s.stack, val)
+	}
+}
 func (s *Stack) PushBack(val []byte) {
 	s.Lock()
 	defer s.Unlock()

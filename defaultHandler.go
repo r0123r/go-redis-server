@@ -34,19 +34,30 @@ func NewDatabase(parent *Database) *Database {
 		ttl:        make(HashTtl),
 		orderedSet: make(HashOrderedSet),
 	}
-	//db.children[0] = db
+
 	go func(db *Database) {
+		var lk chan bool
 		for {
 			now := time.Now()
+			lk <- true
 			for key, val := range db.ttl {
 				if now.Sub(val).Seconds() >= 0 {
-					delete(db.values, key)
-					delete(db.hvalues, key)
-					delete(db.brstack, key)
-					delete(db.orderedSet, key)
+					if _, ok := db.values[key]; ok {
+						delete(db.values, key)
+					}
+					if _, ok := db.hvalues[key]; ok {
+						delete(db.hvalues, key)
+					}
+					if _, ok := db.brstack[key]; ok {
+						delete(db.brstack, key)
+					}
+					if _, ok := db.orderedSet[key]; ok {
+						delete(db.orderedSet, key)
+					}
 					delete(db.ttl, key)
 				}
 			}
+			<-lk
 			time.Sleep(time.Second)
 		}
 	}(db)
@@ -61,16 +72,14 @@ type DefaultHandler struct {
 	sub       HashSub
 }
 
-func (h *DefaultHandler) Rpush(key string, value []byte, values ...[]byte) (int, error) {
-	values = append([][]byte{value}, values...)
+func (h *DefaultHandler) Rpush(key string, values ...[]byte) (int, error) {
 	h.Database = h.dbs[h.CurrentDb]
 
 	if _, exists := h.brstack[key]; !exists {
 		h.brstack[key] = NewStack(key)
 	}
-	for _, value := range values {
-		h.brstack[key].PushBack(value)
-	}
+	h.brstack[key].PushBackLite(values...)
+
 	return h.brstack[key].Len(), nil
 }
 
@@ -278,7 +287,6 @@ func (h *DefaultHandler) Get(key string) ([]byte, error) {
 	}
 	return h.values[key], nil
 }
-
 func (h *DefaultHandler) Set(key string, args ...[]byte) error {
 	h.Database = h.dbs[h.CurrentDb]
 	h.values[key] = args[0]

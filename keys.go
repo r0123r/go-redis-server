@@ -389,3 +389,6 @@ func (h *DefaultHandler) HMSet(args ...[]byte) error {
 
 	return nil
 }
+func (h *DefaultHandler) Setex(key string, ex []byte, arg []byte) error {
+	return h.Set(key, ex, arg)
+}
